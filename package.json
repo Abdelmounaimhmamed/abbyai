@@ -14,7 +14,7 @@
     "dev": "vite",
     "dev:client": "vite",
     "dev:server": "tsx server/basic-server.ts",
-    "build": "node scripts/vercel-build.js",
+    "build": "node scripts/vercel-build.cjs",
     "build:client": "vite build",
     "build:server": "vite build --config vite.config.server.ts",
     "build:vercel": "node scripts/vercel-build.cjs",
@@ -33,6 +33,7 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "prisma": "^6.14.0",
+    "serve": "^14.2.4",
     "zod": "^3.25.76"
   },
   "devDependencies": {
