@@ -1,0 +1,261 @@
+// Vercel-optimized Prisma schema
+// This is optimized for serverless deployment on Vercel
+
+generator client {
+  provider = "prisma-client-js"
+  // Optimize for serverless environment
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+  // Enable query engine binary for better performance
+  engineType = "binary"
+  // Precompute for faster cold starts
+  previewFeatures = ["jsonProtocol"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Enable connection pooling for serverless
+  directUrl = env("DIRECT_URL")
+}
+
+// User model
+model User {
+  id                       String    @id @default(cuid())
+  email                    String    @unique
+  passwordHash             String
+  firstName                String
+  lastName                 String
+  role                     UserRole
+  isActive                 Boolean   @default(false)
+  avatar                   String?
+  phone                    String?
+  dateOfBirth              DateTime?
+  hasCompletedOnboarding   Boolean   @default(false)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  // Relationships
+  clientProfile            ClientProfile?
+  doctorProfile            DoctorProfile?
+  adminProfile             AdminProfile?
+  clientSessions           Session[] @relation("ClientSessions")
+  doctorSessions           Session[] @relation("DoctorSessions")
+  userCertifications       UserCertification[]
+  sessionNotes             SessionNote[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  client
+  doctor
+  admin
+}
+
+// Client profile
+model ClientProfile {
+  id                        String   @id @default(cuid())
+  userId                    String   @unique
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  emergencyContact          String?
+  primaryGoals              String[]
+  anxietyTriggers           String[]
+  preferredTherapyType      String[]
+  previousTherapyExperience Boolean  @default(false)
+  medicationStatus          String?
+  
+  // Progress tracking
+  totalSessionsCompleted    Int      @default(0)
+  totalQuizzesCompleted     Int      @default(0)
+  progressLevel             Int      @default(1)
+  
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@map("client_profiles")
+}
+
+// Doctor profile
+model DoctorProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  licenseNumber         String
+  specializations       String[]
+  education             String[]
+  experience            Int      @default(0)
+  bio                   String?
+  
+  // Availability
+  workingHours          Json     @default("{}")
+  sessionDuration       Int      @default(60) // minutes
+  breakBetweenSessions  Int      @default(15) // minutes
+  isAvailable           Boolean  @default(true)
+  
+  // Approval status
+  isApproved            Boolean  @default(false)
+  approvedAt            DateTime?
+  approvedBy            String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("doctor_profiles")
+}
+
+// Admin profile
+model AdminProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  permissions String[]
+  lastLogin   DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("admin_profiles")
+}
+
+// Therapy session
+model Session {
+  id           String        @id @default(cuid())
+  clientId     String
+  client       User          @relation("ClientSessions", fields: [clientId], references: [id], onDelete: Cascade)
+  doctorId     String?
+  doctor       User?         @relation("DoctorSessions", fields: [doctorId], references: [id], onDelete: SetNull)
+  
+  type         SessionType
+  status       SessionStatus @default(scheduled)
+  
+  scheduledAt  DateTime?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  duration     Int?          // minutes
+  
+  topic        String?
+  summary      String?
+  notes        String?
+  
+  // Meeting information
+  meetingUrl   String?
+  
+  // Ratings
+  clientRating Int?          // 1-5
+  doctorRating Int?          // 1-5
+  clientFeedback String?
+  
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
+  // Relationships
+  sessionNotes SessionNote[]
+  quizResult   QuizResult?
+
+  @@map("sessions")
+}
+
+enum SessionType {
+  ai
+  human
+}
+
+enum SessionStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+  pending_approval
+}
+
+// Session notes (detailed notes by doctor)
+model SessionNote {
+  id           String   @id @default(cuid())
+  sessionId    String
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  doctorId     String
+  doctor       User     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  title        String
+  content      String
+  tags         String[]
+  
+  // Clinical information
+  diagnosis    String?
+  treatmentPlan String?
+  nextSteps    String?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("session_notes")
+}
+
+// Quiz results
+model QuizResult {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  questions Json     // Array of questions and user answers
+  score     Int      // Percentage score
+  passed    Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("quiz_results")
+}
+
+// Certifications
+model Certification {
+  id               String   @id @default(cuid())
+  name             String
+  description      String
+  requirements     Json     // Array of requirements
+  category         String?
+  isActive         Boolean  @default(true)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  userCertifications UserCertification[]
+
+  @@map("certifications")
+}
+
+// User certifications
+model UserCertification {
+  id                   String        @id @default(cuid())
+  userId               String
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  certificationId      String
+  certification        Certification @relation(fields: [certificationId], references: [id], onDelete: Cascade)
+  
+  status               CertificationStatus @default(in_progress)
+  progressPercentage   Int           @default(0)
+  earnedAt             DateTime?
+  
+  // Admin approval
+  isApproved           Boolean       @default(false)
+  approvedAt           DateTime?
+  approvedBy           String?
+  
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@unique([userId, certificationId])
+  @@map("user_certifications")
+}
+
+enum CertificationStatus {
+  in_progress
+  completed
+  expired
+}
+
+// Add indexes for better performance in serverless environment
+// These help with query performance on commonly accessed fields

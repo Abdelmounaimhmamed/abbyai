@@ -1,0 +1,322 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  firstName         String
+  lastName          String
+  role              UserRole
+  isActive          Boolean   @default(false)
+  avatar            String?
+  phone             String?
+  dateOfBirth       DateTime?
+  hasCompletedOnboarding Boolean @default(false)
+  
+  // Authentication
+  passwordHash      String
+  
+  // Profile specifics based on role
+  clientProfile     ClientProfile?
+  doctorProfile     DoctorProfile?
+  adminProfile      AdminProfile?
+  
+  // Relationships
+  sessionsAsClient  Session[] @relation("ClientSessions")
+  sessionsAsDoctor  Session[] @relation("DoctorSessions")
+  payments          Payment[]
+  quizResults       QuizResult[]
+  certifications    UserCertification[]
+  sessionNotes      SessionNote[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@map("users")
+}
+
+model ClientProfile {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Onboarding data
+  emergencyContact  String?
+  primaryGoals      String[]
+  anxietyTriggers   String[]
+  preferredTherapyType String[]
+  previousTherapyExperience Boolean @default(false)
+  medicationStatus  String?
+  
+  // Progress tracking
+  totalSessionsCompleted Int @default(0)
+  totalQuizzesCompleted  Int @default(0)
+  progressLevel         Int @default(1)
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@map("client_profiles")
+}
+
+model DoctorProfile {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  licenseNumber     String     @unique
+  specializations   String[]
+  education         String[]
+  experience        Int        // years of experience
+  bio               String?
+  
+  // Availability settings
+  workingHours      Json       // {monday: {start: "09:00", end: "17:00", isAvailable: true}, ...}
+  sessionDuration   Int        @default(120) // minutes
+  breakBetweenSessions Int     @default(15)  // minutes
+  
+  // Status
+  isApproved        Boolean    @default(false)
+  approvedAt        DateTime?
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@map("doctor_profiles")
+}
+
+model AdminProfile {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  permissions       String[]   // array of permission strings
+  lastLogin         DateTime?
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@map("admin_profiles")
+}
+
+model Session {
+  id                String       @id @default(cuid())
+  
+  // Basic session info
+  type              SessionType
+  status            SessionStatus
+  scheduledAt       DateTime
+  startedAt         DateTime?
+  endedAt           DateTime?
+  
+  // Participants
+  clientId          String
+  client            User         @relation("ClientSessions", fields: [clientId], references: [id])
+  doctorId          String?
+  doctor            User?        @relation("DoctorSessions", fields: [doctorId], references: [id])
+  
+  // Session content
+  topic             String?
+  summary           String?
+  notes             String?
+  
+  // AI-specific fields
+  aiModel           String?      // For AI sessions
+  
+  // Session evaluation
+  clientRating      Int?         // 1-5 rating
+  clientFeedback    String?
+  doctorRating      Int?         // Doctor's assessment
+  
+  // Related entities
+  quizResult        QuizResult?
+  sessionNotes      SessionNote[]
+  
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  
+  @@map("sessions")
+}
+
+model QuizResult {
+  id                String       @id @default(cuid())
+  sessionId         String       @unique
+  session           Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User         @relation(fields: [userId], references: [id])
+  
+  questions         Json         // Array of quiz questions
+  answers           Json         // Array of user answers
+  score             Int          // Calculated score
+  totalQuestions    Int
+  
+  createdAt         DateTime     @default(now())
+  
+  @@map("quiz_results")
+}
+
+model Certification {
+  id                String             @id @default(cuid())
+  name              String             @unique
+  description       String
+  requirements      Json               // Requirements to unlock this certification
+  badgeImageUrl     String?
+
+  // Progress requirements
+  requiredSessions  Int                @default(2)
+  requiredQuizzes   Int                @default(2)
+  minimumScore      Int                @default(80)
+
+  userCertifications UserCertification[]
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@map("certifications")
+}
+
+model UserCertification {
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id])
+  certificationId   String
+  certification     Certification    @relation(fields: [certificationId], references: [id])
+  
+  status            CertificationStatus
+  progressPercentage Int             @default(0)
+  earnedAt          DateTime?
+  
+  // Admin approval fields
+  isApproved        Boolean          @default(false)
+  approvedBy        String?
+  approvedAt        DateTime?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  @@unique([userId, certificationId])
+  @@map("user_certifications")
+}
+
+model Payment {
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id])
+  
+  amount            Decimal          @db.Decimal(10,2)
+  currency          String           @default("USD")
+  paymentMethod     PaymentMethod
+  
+  // Payment details
+  status            PaymentStatus
+  transactionId     String?          @unique
+  
+  // PayPal specific
+  paypalEmail       String?
+  
+  // Bank transfer specific
+  bankAccountLast4  String?
+  
+  // Verification
+  isVerified        Boolean          @default(false)
+  verifiedBy        String?          // Admin user ID
+  verifiedAt        DateTime?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  @@map("payments")
+}
+
+model SessionNote {
+  id                String           @id @default(cuid())
+  sessionId         String
+  session           Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  doctorId          String
+  doctor            User             @relation(fields: [doctorId], references: [id])
+  
+  title             String
+  content           String
+  tags              String[]
+  
+  // Clinical notes
+  diagnosis         String?
+  treatmentPlan     String?
+  nextSteps         String?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  @@map("session_notes")
+}
+
+model APIKey {
+  id                String           @id @default(cuid())
+  name              String
+  keyHash           String           @unique
+  
+  // Permissions
+  permissions       String[]
+  isActive          Boolean          @default(true)
+  
+  // Usage tracking
+  lastUsedAt        DateTime?
+  usageCount        Int              @default(0)
+  
+  // Metadata
+  createdBy         String           // Admin user ID
+  expiresAt         DateTime?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  @@map("api_keys")
+}
+
+// Enums
+enum UserRole {
+  client
+  doctor
+  admin
+}
+
+enum SessionType {
+  ai
+  human
+}
+
+enum SessionStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+enum PaymentMethod {
+  paypal
+  bank_transfer
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum CertificationStatus {
+  locked
+  in_progress
+  completed
+  approved
+}

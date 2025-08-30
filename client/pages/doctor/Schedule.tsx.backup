@@ -1,0 +1,563 @@
+import { useState, useEffect } from 'react';
+import { doctorApi } from '@/lib/api';
+import DashboardLayout from '@/components/DashboardLayout';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogHeader, 
+  DialogTitle,
+  DialogTrigger 
+} from '@/components/ui/dialog';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { 
+  Calendar as CalendarIcon,
+  Clock,
+  Plus,
+  Edit,
+  Trash2,
+  User,
+  AlertCircle,
+  CheckCircle,
+  Settings
+} from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { DoctorAvailability, TherapySession } from '@shared/types';
+import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
+
+const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const timeSlots = Array.from({ length: 24 }, (_, i) => {
+  const hour = i.toString().padStart(2, '0');
+  return `${hour}:00`;
+});
+
+export default function DoctorSchedule() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [availability, setAvailability] = useState<DoctorAvailability[]>([]);
+  const [upcomingSessions, setUpcomingSessions] = useState<TherapySession[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showAvailabilityDialog, setShowAvailabilityDialog] = useState(false);
+  const [editingDay, setEditingDay] = useState<number | null>(null);
+  const [tempStartTime, setTempStartTime] = useState('09:00');
+  const [tempEndTime, setTempEndTime] = useState('17:00');
+  const [scheduleData, setScheduleData] = useState<any>(null);
+
+  // Fetch schedule data on component mount
+  useEffect(() => {
+    const fetchScheduleData = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const response = await doctorApi.getSchedule();
+
+        setScheduleData(response);
+        setUpcomingSessions(response.sessions || []);
+
+        // Convert working hours to availability format
+        if (response.workingHours) {
+          const availabilityList: DoctorAvailability[] = [];
+          Object.entries(response.workingHours).forEach(([day, hours]: [string, any]) => {
+            if (hours && hours.start && hours.end) {
+              availabilityList.push({
+                dayOfWeek: parseInt(day),
+                startTime: hours.start,
+                endTime: hours.end,
+                timezone: 'UTC'
+              });
+            }
+          });
+          setAvailability(availabilityList);
+        }
+      } catch (error) {
+        console.error('Failed to fetch schedule data:', error);
+        setError('Failed to load schedule data. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchScheduleData();
+  }, []);
+
+  const getClientName = (session: any) => {
+    if (session.client) {
+      return `${session.client.firstName} ${session.client.lastName}`;
+    }
+    return 'Unknown Client';
+  };
+
+  const getDayAvailability = (dayOfWeek: number) => {
+    return availability.find(a => a.dayOfWeek === dayOfWeek);
+  };
+
+  const handleUpdateAvailability = async (dayOfWeek: number, startTime: string, endTime: string) => {
+    try {
+      setError('');
+      setSuccess('');
+
+      // Update local state immediately
+      setAvailability(prev => {
+        const existing = prev.findIndex(a => a.dayOfWeek === dayOfWeek);
+        const newAvailability: DoctorAvailability = {
+          dayOfWeek,
+          startTime,
+          endTime,
+          timezone: 'UTC'
+        };
+
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = newAvailability;
+          return updated;
+        } else {
+          return [...prev, newAvailability];
+        }
+      });
+
+      // Prepare working hours for API
+      const workingHours: any = {};
+      // Add current availability to working hours
+      availability.forEach(av => {
+        workingHours[av.dayOfWeek] = { start: av.startTime, end: av.endTime };
+      });
+      // Add the new one
+      workingHours[dayOfWeek] = { start: startTime, end: endTime };
+
+      await doctorApi.updateSchedule({ workingHours });
+      setSuccess('Availability updated successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error: any) {
+      console.error('Failed to update availability:', error);
+      setError(error.message || 'Failed to update availability. Please try again.');
+    }
+  };
+
+  const handleRemoveAvailability = async (dayOfWeek: number) => {
+    try {
+      setError('');
+      setSuccess('');
+
+      // Update local state
+      setAvailability(prev => prev.filter(a => a.dayOfWeek !== dayOfWeek));
+
+      // Prepare working hours for API
+      const workingHours: any = {};
+      availability.forEach(av => {
+        if (av.dayOfWeek !== dayOfWeek) {
+          workingHours[av.dayOfWeek] = { start: av.startTime, end: av.endTime };
+        }
+      });
+
+      await doctorApi.updateSchedule({ workingHours });
+      setSuccess('Availability removed successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error: any) {
+      console.error('Failed to remove availability:', error);
+      setError(error.message || 'Failed to remove availability. Please try again.');
+    }
+  };
+
+  const getSessionsForDate = (date: Date) => {
+    return upcomingSessions.filter(session => 
+      isSameDay(new Date(session.scheduledAt!), date)
+    );
+  };
+
+  const weekStart = startOfWeek(selectedDate);
+  const weekEnd = endOfWeek(selectedDate);
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+  const stats = {
+    weeklyHours: availability.reduce((total, av) => {
+      const start = parseInt(av.startTime.split(':')[0]);
+      const end = parseInt(av.endTime.split(':')[0]);
+      return total + (end - start);
+    }, 0),
+    upcomingCount: upcomingSessions.length,
+    availableDays: availability.length,
+    busySlots: upcomingSessions.length
+  };
+
+  if (loading) {
+    return (
+      <ProtectedRoute allowedRoles={['doctor']}>
+        <DashboardLayout>
+          <div className="flex items-center justify-center min-h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-abby-blue mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading schedule...</p>
+            </div>
+          </div>
+        </DashboardLayout>
+      </ProtectedRoute>
+    );
+  }
+
+  return (
+    <ProtectedRoute allowedRoles={['doctor']}>
+      <DashboardLayout>
+        <div className="space-y-8">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Schedule Management</h1>
+              <p className="text-muted-foreground">
+                Manage your availability and view upcoming appointments
+              </p>
+            </div>
+            <Button
+              className="bg-abby-green hover:bg-abby-green/90"
+              onClick={() => {
+                setEditingDay(null);
+                setTempStartTime('09:00');
+                setTempEndTime('17:00');
+                setShowAvailabilityDialog(true);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Set Availability
+            </Button>
+          </div>
+
+          {/* Status Messages */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {success && (
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">{success}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Schedule Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-abby-green" />
+                  <span className="text-sm font-medium">Weekly Hours</span>
+                </div>
+                <div className="text-2xl font-bold text-abby-green mt-2">{stats.weeklyHours}</div>
+                <div className="text-xs text-muted-foreground">Available hours</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-2">
+                  <CalendarIcon className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium">Upcoming</span>
+                </div>
+                <div className="text-2xl font-bold text-blue-600 mt-2">{stats.upcomingCount}</div>
+                <div className="text-xs text-muted-foreground">Sessions scheduled</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium">Available Days</span>
+                </div>
+                <div className="text-2xl font-bold text-green-600 mt-2">{stats.availableDays}</div>
+                <div className="text-xs text-muted-foreground">Days per week</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-orange-600" />
+                  <span className="text-sm font-medium">Busy Slots</span>
+                </div>
+                <div className="text-2xl font-bold text-orange-600 mt-2">{stats.busySlots}</div>
+                <div className="text-xs text-muted-foreground">This week</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-8">
+            {/* Calendar View */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Week Navigation */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Weekly Schedule</CardTitle>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedDate(addDays(selectedDate, -7))}
+                      >
+                        Previous Week
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedDate(addDays(selectedDate, 7))}
+                      >
+                        Next Week
+                      </Button>
+                    </div>
+                  </div>
+                  <CardDescription>
+                    Week of {format(weekStart, 'MMM dd')} - {format(weekEnd, 'MMM dd, yyyy')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-7 gap-2">
+                    {weekDays.map((day, index) => {
+                      const dayAvailability = getDayAvailability(day.getDay());
+                      const daySessions = getSessionsForDate(day);
+                      const isToday = isSameDay(day, new Date());
+                      
+                      return (
+                        <div
+                          key={day.toISOString()}
+                          className={`p-3 border rounded-lg min-h-[120px] ${
+                            isToday ? 'border-abby-blue bg-blue-50' : 'border-gray-200'
+                          }`}
+                        >
+                          <div className="text-center mb-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              {format(day, 'EEE')}
+                            </div>
+                            <div className={`text-lg font-bold ${
+                              isToday ? 'text-abby-blue' : 'text-foreground'
+                            }`}>
+                              {format(day, 'd')}
+                            </div>
+                          </div>
+                          
+                          {dayAvailability ? (
+                            <div className="space-y-1">
+                              <div className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded">
+                                {dayAvailability.startTime} - {dayAvailability.endTime}
+                              </div>
+                              {daySessions.map(session => {
+                                const clientName = getClientName(session);
+                                return (
+                                  <div
+                                    key={session.id}
+                                    className="text-xs bg-abby-blue text-white px-2 py-1 rounded"
+                                  >
+                                    {format(new Date(session.scheduledAt!), 'HH:mm')} - {clientName}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-500 text-center">
+                              Not available
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Availability Settings */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Weekly Availability</CardTitle>
+                  <CardDescription>
+                    Set your regular working hours for each day of the week
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {dayNames.map((dayName, index) => {
+                      const dayAvailability = getDayAvailability(index);
+                      
+                      return (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            <span className="font-medium w-20">{dayName}</span>
+                            {dayAvailability ? (
+                              <Badge className="bg-green-100 text-green-800 border-0">
+                                {dayAvailability.startTime} - {dayAvailability.endTime}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary">Not available</Badge>
+                            )}
+                          </div>
+                          
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingDay(index);
+                                if (dayAvailability) {
+                                  setTempStartTime(dayAvailability.startTime);
+                                  setTempEndTime(dayAvailability.endTime);
+                                }
+                                setShowAvailabilityDialog(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            {dayAvailability && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleRemoveAvailability(index)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              {/* Calendar Picker */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Jump to Date</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => date && setSelectedDate(date)}
+                    className="rounded-md border"
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Upcoming Sessions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Upcoming Sessions</CardTitle>
+                  <CardDescription>
+                    Your next scheduled appointments
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {upcomingSessions.slice(0, 5).map(session => {
+                      const clientName = getClientName(session);
+                      return (
+                        <div key={session.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                          <div className="w-8 h-8 bg-abby-blue rounded-full flex items-center justify-center">
+                            <User className="w-4 h-4 text-white" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">{clientName}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {format(new Date(session.scheduledAt!), 'MMM dd, HH:mm')}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {upcomingSessions.length === 0 && (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        No upcoming sessions
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Availability Dialog */}
+          <Dialog open={showAvailabilityDialog} onOpenChange={setShowAvailabilityDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingDay !== null ? `Edit ${dayNames[editingDay]} Availability` : 'Set Availability'}
+                </DialogTitle>
+                <DialogDescription>
+                  Configure your working hours for this day
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Start Time</Label>
+                    <Select value={tempStartTime} onValueChange={setTempStartTime}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timeSlots.slice(0, 20).map(time => (
+                          <SelectItem key={time} value={time}>{time}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label>End Time</Label>
+                    <Select value={tempEndTime} onValueChange={setTempEndTime}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timeSlots.slice(1).map(time => (
+                          <SelectItem key={time} value={time}>{time}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button
+                    onClick={async () => {
+                      if (editingDay !== null) {
+                        await handleUpdateAvailability(editingDay, tempStartTime, tempEndTime);
+                        setShowAvailabilityDialog(false);
+                      }
+                    }}
+                    disabled={tempStartTime >= tempEndTime}
+                    className="bg-abby-green hover:bg-abby-green/90"
+                  >
+                    Save Availability
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAvailabilityDialog(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
+  );
+}

@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Tailwind CSS theme
+   * tailwind.config.ts expects the following color variables to be expressed as HSL values.
+   * A different format will require also updating the theme in tailwind.config.ts.
+  */
+  :root {
+    --background: 190 100% 98%;
+    --foreground: 190 50% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 190 50% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 190 50% 10%;
+
+    --primary: 190 85% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 140 40% 92%;
+    --secondary-foreground: 190 50% 20%;
+
+    --muted: 190 30% 95%;
+    --muted-foreground: 190 20% 50%;
+
+    --accent: 140 60% 88%;
+    --accent-foreground: 190 60% 25%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 190 30% 88%;
+    --input: 190 30% 92%;
+    --ring: 190 85% 45%;
+
+    --radius: 0.75rem;
+
+    /* Abby AI specific colors */
+    --abby-blue: 190 85% 45%;
+    --abby-green: 140 60% 50%;
+    --abby-light: 190 100% 98%;
+    --therapy-calm: 200 50% 94%;
+    --therapy-focus: 160 40% 85%;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 190 50% 8%;
+    --foreground: 190 30% 92%;
+
+    --card: 190 40% 12%;
+    --card-foreground: 190 30% 92%;
+
+    --popover: 190 40% 12%;
+    --popover-foreground: 190 30% 92%;
+
+    --primary: 190 85% 55%;
+    --primary-foreground: 190 50% 8%;
+
+    --secondary: 190 30% 18%;
+    --secondary-foreground: 190 30% 88%;
+
+    --muted: 190 30% 15%;
+    --muted-foreground: 190 20% 65%;
+
+    --accent: 140 50% 25%;
+    --accent-foreground: 190 30% 88%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 190 30% 20%;
+    --input: 190 30% 18%;
+    --ring: 190 85% 55%;
+
+    /* Dark mode Abby AI colors */
+    --abby-blue: 190 85% 55%;
+    --abby-green: 140 50% 60%;
+    --abby-light: 190 50% 8%;
+    --therapy-calm: 200 30% 15%;
+    --therapy-focus: 160 30% 20%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
