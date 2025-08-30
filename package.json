@@ -21,10 +21,8 @@
     "start": "node dist/server/node-build.mjs",
     "test": "vitest --run",
     "format.fix": "prettier --write .",
-    "typecheck": "tsc",
-    "vercel-build": "node scripts/vercel-build.js",
-    "deploy": "node scripts/deploy-vercel.js",
-    "deploy:vercel": "node scripts/deploy-vercel.js"
+    "typecheck": "tsc"
+  
   },
   "dependencies": {
     "@prisma/client": "^6.14.0",
