@@ -5,7 +5,7 @@
   "devCommand": "npm run dev",
   "functions": {
     "api/**/*.ts": {
-      "runtime": "@vercel/node@20.x"
+      "runtime": "@vercel/node"
     }
   },
   "env": {
